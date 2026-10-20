@@ -33,7 +33,7 @@ LEGO_ALL_COLORS = {
     "Light Gray": (155, 161, 157),
     "Dark Gray": (109, 110, 92),
     "Dark Bluish Gray": (108, 110, 104),
-    "Black": (0, 0, 0),
+    "Black": (18, 18, 18),
 
     # --- Tans, Nougats, Flesh & Browns (18) ---
     "Very Light Orange": (243, 207, 155),
@@ -54,6 +54,16 @@ LEGO_ALL_COLORS = {
     "Brown": (88, 57, 39),
     "Umber Brown": (84, 63, 51),
     "Dark Brown": (53, 33, 0),
+    "Reddish Brown": (88, 38, 22),
+    "Brown": (88, 57, 39),
+    "Umber Brown": (84, 63, 51),
+    "Dark Brown": (48, 25, 16),  # Warm espresso brown instead of olive-yellow (53, 33, 0)
+
+    # --- Reds, Pinks, Corals & Magentas (18) ---
+    "Transparent Red": (92, 12, 14),       # Deepest burgundy-red step (ID 41)
+    "Dark Red": (114, 14, 15),             # Primary Dark Red (ID 154)
+    "Metallic Bright Red": (145, 22, 25),  # Mid-step between Dark Red and Red (ID 184)
+    "Red": (180, 0, 0),
 
     # --- Reds, Pinks, Corals & Magentas (16) ---
     "Dark Red": (114, 14, 15),
@@ -149,6 +159,38 @@ LEGO_ALL_COLORS = {
 LEGO_GRAYSCALE = {k: LEGO_ALL_COLORS[k] for k in
                   ["White", "Very Light Bluish Gray", "Light Bluish Gray", "Dark Bluish Gray", "Black"]}
 
+# Average BrickLink price (USD) per 1x1 brick. Unlisted retired/rare colors default to $0.95.
+BRICKLINK_1X1_PRICE = {
+    # Tier 1: Cheap mass-produced ($0.05 - $0.08)
+    "Black": 0.05, "White": 0.05, "Light Bluish Gray": 0.05, "Dark Bluish Gray": 0.05,
+    "Red": 0.05, "Blue": 0.05, "Yellow": 0.05, "Tan": 0.05, "Reddish Brown": 0.05,
+    "Dark Tan": 0.06, "Orange": 0.06, "Lime": 0.06, "Green": 0.06, "Dark Red": 0.07,
+    "Dark Blue": 0.07, "Dark Green": 0.07, "Dark Brown": 0.07, "Bright Light Orange": 0.07,
+    "Light Nougat": 0.07, "Medium Azure": 0.07, "Bright Green": 0.07,
+    # Tier 2: Active specialty ($0.09 - $0.18)
+    "Dark Orange": 0.09, "Medium Nougat": 0.09, "Olive Green": 0.09, "Sand Green": 0.10,
+    "Sand Blue": 0.11, "Medium Blue": 0.10, "Dark Azure": 0.09, "Dark Turquoise (Teal)": 0.09,
+    "Bright Light Yellow": 0.10, "Bright Light Blue": 0.11, "Light Aqua": 0.10, "Coral": 0.10,
+    "Bright Pink": 0.09, "Dark Pink": 0.10, "Magenta": 0.10, "Lavender": 0.10,
+    "Medium Lavender": 0.10, "Dark Purple": 0.11, "Spring Yellowish Green": 0.10,
+    "Pearl Gold": 0.09, "Flat Silver": 0.10, "Sienna Brown": 0.14, "Umber Brown": 0.14,
+    "Warm Tan": 0.14, "Reddish Orange": 0.14, "Vibrant Neon Yellow": 0.12,
+    "Transparent Red": 0.08,
+    # Tier 3: Semi-retired / Pricier ($0.25 - $0.65)
+    "Nougat": 0.25, "Dark Nougat": 0.30, "Rust": 0.45, "Earth Orange": 0.40,
+    "Medium Orange": 0.30, "Very Light Bluish Gray": 0.28, "Light Gray": 0.35,
+    "Dark Gray": 0.40, "Brown": 0.40, "Sand Red": 0.65, "Metallic Silver": 0.30,
+    "Pearl Light Gray": 0.25, "Pearl Dark Gray": 0.35, "Warm Gold": 0.45, "Copper": 0.55,
+    "Reddish Violet": 0.35, "Purple": 0.45, "Violet": 0.40, "Medium Violet": 0.45,
+}
+
+# Longer interlocking bricks cost much less per stud than four 1x1 bricks on BrickLink
+BRICK_SIZE_PRICE_MULT = {1: 1.0, 2: 1.25, 3: 1.50, 4: 1.70}
+
+def get_brick_price(color_name, width=1, depth=1):
+    base = BRICKLINK_1X1_PRICE.get(color_name, 0.95)
+    depth_mult = 1.18 if depth == 2 else 1.0
+    return base * BRICK_SIZE_PRICE_MULT.get(width, float(width)) * depth_mult
 GEOMETRY = {
     "1x1 bricks, side view (15.8:9.6 ratio)": dict(w=8, h=5, cm=(1.58, 0.96), piece="Brick 1x1", studs=False),
     "1x1 bricks, side view (standard 5:6)": dict(w=5, h=6, cm=(0.8, 0.96), piece="Brick 1x1", studs=False),
@@ -202,37 +244,51 @@ def oklab_to_srgb8(lab):
 
 
 def dist2(lab, pal, l_weight=1.0):
-    """Squared color distance (pixels x palette) in OKLab.
-
-    Neutral pixels (grays, blacks, whites) weight hue/saturation error much more heavily, so they land on
-    neutral bricks instead of a tinted one (LEGO's "Black" is lighter than Dark Brown, and its gray ramp has
-    gaps that pinkish Sand Red would otherwise fill). Saturated pixels are matched mostly on overall color.
-    """
+    """Balanced OKLab distance: keeps full brightness contrast for sharp lines without pink/orange shifts."""
     dl = lab[:, None, 0] - pal[None, :, 0]
     da = lab[:, None, 1] - pal[None, :, 1]
     db = lab[:, None, 2] - pal[None, :, 2]
-    chroma = np.hypot(lab[:, 1], lab[:, 2])
-    w = (1.0 + 7.0 * np.exp(-chroma / 0.04))[:, None]
-    return l_weight * dl * dl + w * (da * da + db * db)
+
+    c_pix = np.hypot(lab[:, 1], lab[:, 2])[:, None]
+    c_pal = np.hypot(pal[:, 1], pal[:, 2])[None, :]
+
+    # Keep neutral grays/blacks on neutral bricks, and penalize bricks that are MORE saturated than the pixel
+    # (prevents pale window reflections from turning Bright Pink and gray pavement from turning Orange)
+    neutral_w = 1.0 + 6.0 * np.exp(-c_pix / 0.028)
+    oversat_penalty = np.maximum(0.0, c_pal - c_pix * 1.15) ** 2
+
+    # Pure hue difference for saturated colors so deep reds prefer Dark Red/Rust over Brown
+    dh2 = np.maximum(0.0, 2.0 * (c_pix * c_pal - lab[:, None, 1] * pal[None, :, 1] - lab[:, None, 2] * pal[None, :, 2]))
+    color_mask = np.clip((c_pix - 0.04) / 0.04, 0.0, 1.0)
+
+    return (
+        1.15 * l_weight * (dl * dl)
+        + neutral_w * (da * da + db * db)
+        + 4.5 * color_mask * dh2
+        + 10.0 * oversat_penalty
+    )
 
 
-def nearest(lab, pal_lab, chunk=60000, l_weight=1.0):
-    """Index of the closest palette color for each OKLab row (chunked to keep memory small)."""
+def nearest(lab, pal_lab, chunk=60000, l_weight=1.0, price_penalty=None):
+    """Index of the closest palette color for each OKLab row, balancing color accuracy and BrickLink cost."""
     lab = np.asarray(lab, dtype=np.float32).reshape(-1, 3)
     pal = np.asarray(pal_lab, dtype=np.float32)
     out = np.empty(len(lab), dtype=np.int32)
     for s in range(0, len(lab), chunk):
-        out[s:s + chunk] = dist2(lab[s:s + chunk], pal, l_weight).argmin(1)
+        d = dist2(lab[s:s + chunk], pal, l_weight)
+        if price_penalty is not None:
+            d = d + price_penalty[None, :]
+        out[s:s + chunk] = d.argmin(1)
     return out
 
 
-def snap(rgb8, pal_lab, l_weight=1.0):
+def snap(rgb8, pal_lab, l_weight=1.0, price_penalty=None):
     """Palette index for every pixel of an (H, W, 3) uint8 image. Works on unique colors only (fast)."""
     flat = rgb8.reshape(-1, 3).astype(np.uint32)
     packed = (flat[:, 0] << 16) | (flat[:, 1] << 8) | flat[:, 2]
     uniq, inverse = np.unique(packed, return_inverse=True)
     u_rgb = np.stack([(uniq >> 16) & 255, (uniq >> 8) & 255, uniq & 255], axis=1).astype(np.uint8)
-    idx_u = nearest(srgb8_to_oklab(u_rgb), pal_lab, l_weight=l_weight)
+    idx_u = nearest(srgb8_to_oklab(u_rgb), pal_lab, l_weight=l_weight, price_penalty=price_penalty)
     return idx_u[inverse.reshape(-1)].reshape(rgb8.shape[:2])
 
 
@@ -317,8 +373,18 @@ def supersample(nx, ny, kind):
 def enhance(img, p, kind):
     brightness, contrast, saturation = p["brightness"], p["contrast"], p["saturation"]
     if kind == "photo" and p["auto_enhance"]:
-        img = ImageOps.autocontrast(img, cutoff=1)
-        contrast, saturation = contrast * 1.05, saturation * 1.12
+        # Gentle luminance stretch that lifts dark shadow separation without shifting RGB hues
+        arr = np.asarray(img, dtype=np.float32)
+        lum = 0.2126 * arr[..., 0] + 0.7152 * arr[..., 1] + 0.0722 * arr[..., 2]
+        lo, hi = np.percentile(lum, (1, 99.5))
+        if hi > lo + 1e-3:
+            norm_l = np.clip((lum - lo) / (hi - lo), 0.0, 1.0)
+            # Slight gamma lift (0.88) opens up dark red car contours so they don't crush into one brick
+            lifted_l = (norm_l ** 0.88) * 255.0
+            scale = lifted_l / np.maximum(lum, 1.0)
+            arr = np.clip(arr * scale[..., None], 0, 255)
+            img = Image.fromarray(arr.astype(np.uint8))
+        contrast, saturation = contrast * 1.06, saturation * 1.08
     for enhancer, factor in ((ImageEnhance.Brightness, brightness), (ImageEnhance.Contrast, contrast),
                              (ImageEnhance.Color, saturation)):
         if abs(factor - 1.0) > 1e-3:
@@ -421,6 +487,86 @@ def limit_colors(idx, cell_lab, pal_lab, max_colors):
 class Mosaic:
     def __init__(self, **kw):
         self.__dict__.update(kw)
+        
+def pack_interlocking_wall(idx_grid, names, depth=2):
+    """
+    Pack a (ny, nx) color grid into interlocking bricks using ONLY widths (1, 2, 4) — no 1x3/2x3 bricks.
+    Uses dynamic programming per row to stagger vertical seams against the row below.
+    """
+    allowed_widths = (1, 2, 4)
+    ny, nx = idx_grid.shape
+    brick_spans = np.ones((ny, nx), dtype=np.int32)
+    brick_id_grid = np.zeros((ny, nx), dtype=np.int32)
+    parts_tally = {name: {w: 0 for w in allowed_widths} for name in names}
+
+    prev_seams = set()
+    uid = 1
+    total_seams, staggered_seams = 0, 0
+
+    for y in range(ny - 1, -1, -1):
+        row = idx_grid[y]
+        dp = [(-1e9, -1)] * (nx + 1)
+        dp[0] = (0.0, 0)
+
+        for x in range(nx):
+            if dp[x][0] <= -1e8:
+                continue
+            color = row[x]
+            for w in allowed_widths:
+                nx_pos = x + w
+                # Check that ALL studs in this brick width match the exact same color
+                if nx_pos > nx or not np.all(row[x:nx_pos] == color):
+                    break
+
+                # Reward 4-wide and 2-wide bricks over 1x1s
+                score = {1: 0.0, 2: 2.4, 4: 5.2}[w]
+
+                # Penalize vertical seams that line up with the row below
+                if nx_pos < nx:
+                    if nx_pos in prev_seams:
+                        score -= 4.5
+                    else:
+                        score += 1.2
+
+                # Bonus for bridging across seams from the row below
+                for internal_x in range(x + 1, nx_pos):
+                    if internal_x in prev_seams:
+                        score += 2.5
+
+                # On odd rows, prefer starting with a 2-wide brick so 4-wide bricks stagger in a running bond
+                if x == 0 and (y % 2 == 1) and w == 2:
+                    score += 1.8
+
+                if dp[x][0] + score > dp[nx_pos][0]:
+                    dp[nx_pos] = (dp[x][0] + score, x)
+
+        cur = nx
+        row_bricks = []
+        current_seams = set()
+        while cur > 0:
+            start_x = dp[cur][1]
+            w = cur - start_x
+            row_bricks.append((start_x, w, int(row[start_x])))
+            if start_x > 0:
+                current_seams.add(start_x)
+            cur = start_x
+
+        for start_x, w, c_idx in reversed(row_bricks):
+            brick_spans[y, start_x] = w
+            brick_spans[y, start_x + 1:start_x + w] = 0
+            brick_id_grid[y, start_x:start_x + w] = uid
+            uid += 1
+            parts_tally[names[c_idx]][w] += 1
+
+        if y < ny - 1:
+            for s_x in current_seams:
+                total_seams += 1
+                if s_x not in prev_seams:
+                    staggered_seams += 1
+        prev_seams = current_seams
+
+    strength_pct = 100.0 * staggered_seams / max(total_seams, 1)
+    return brick_spans, brick_id_grid, parts_tally, strength_pct
 
 
 def build_mosaic(file_bytes, p, palette_items):
@@ -439,8 +585,10 @@ def build_mosaic(file_bytes, p, palette_items):
     hi_rgb8 = np.asarray(hi)
 
     cells = average_cells(hi_rgb8, nx, ny, S)
-    if kind == "photo" and abs(p["sharpness"] - 1.0) > 1e-3:  # sharpen at brick scale, where it matters
-        cells = np.asarray(ImageEnhance.Sharpness(Image.fromarray(cells)).enhance(p["sharpness"]))
+    if kind == "photo":
+        eff_sharp = p["sharpness"] * 1.35 if p["auto_enhance"] else p["sharpness"]
+        if abs(eff_sharp - 1.0) > 1e-3:
+            cells = np.asarray(ImageEnhance.Sharpness(Image.fromarray(cells)).enhance(eff_sharp))
 
     result = dict(nx=nx, ny=ny, kind=kind, prepared=img, names=None, palette=None, idx=None, counts=None)
     if p["color_mode"] == "true":
@@ -455,18 +603,76 @@ def build_mosaic(file_bytes, p, palette_items):
         pal_rgb = np.array([c for _, c in palette_items], dtype=np.uint8)
     pal_lab = srgb8_to_oklab(pal_rgb)
 
+    # Calculate BrickLink price penalty per palette color based on user's Price-to-Color slider (0..100)
+    price_weight = p.get("price_weight", 55) / 100.0
+    if p["color_mode"] in ("lego_all", "lego_pick") and price_weight > 0:
+        raw_prices = np.array([BRICKLINK_1X1_PRICE.get(n, 0.95) for n in names], dtype=np.float64)
+        price_penalty = (price_weight ** 1.2) * 0.35 * ((raw_prices - 0.05) ** 1.2)
+        # Slider >= 85 strictly locks to cheap $0.05-$0.10 bricks; >= 60 blocks rare $0.25+ bricks
+        if price_weight >= 0.85:
+            price_penalty = np.where(raw_prices > 0.10, 1e6, price_penalty)
+        elif price_weight >= 0.60:
+            price_penalty = np.where(raw_prices > 0.25, 1e6, price_penalty)
+    else:
+        price_penalty = None
+
     if kind == "graphic":
         idx = graphic_cells(hi_rgb8, nx, ny, S, pal_lab, p["detail_boost"])
+        if price_penalty is not None:
+            idx = nearest(pal_lab[idx].reshape(-1, 3), pal_lab, price_penalty=price_penalty).reshape(ny, nx)
         cell_lab = pal_lab[idx]
+    elif p["color_mode"] in ("lego_all", "lego_pick") and not p["dither"]:
+        n_clusters = p["max_colors"] if p["max_colors"] > 0 else 20
+        adap_rgb = kmeans_palette(hi_rgb8, n_clusters)
+        adap_lab = srgb8_to_oklab(adap_rgb)
+        cell_lab = srgb8_to_oklab(cells)
+
+        cluster_idx = ((cell_lab.reshape(-1, 1, 3) - adap_lab[None, :, :]) ** 2).sum(2).argmin(1).reshape(ny, nx)
+
+        d_mat = dist2(adap_lab, pal_lab)
+        if price_penalty is not None:
+            d_mat = d_mat + price_penalty[None, :]
+        _, cluster_counts = np.unique(cluster_idx, return_counts=True)
+        order = np.argsort(-cluster_counts)
+        cluster_to_lego = np.zeros(len(adap_rgb), dtype=np.int32)
+        used_penalty = np.zeros(len(pal_rgb), dtype=np.float64)
+
+        for c_i in order:
+            best_lego = int((d_mat[c_i] + used_penalty).argmin())
+            cluster_to_lego[c_i] = best_lego
+            used_penalty[best_lego] += 0.008
+
+        idx = cluster_to_lego[cluster_idx]
     else:
         cell_lab = srgb8_to_oklab(cells)
-        idx = dither(cell_lab, pal_lab) if p["dither"] else nearest(cell_lab, pal_lab).reshape(ny, nx)
+        idx = dither(cell_lab, pal_lab) if p["dither"] else nearest(cell_lab, pal_lab, price_penalty=price_penalty).reshape(ny, nx)
 
     idx = despeckle(idx, len(pal_rgb), p["despeckle"])
     idx = limit_colors(idx, cell_lab, pal_lab, p["max_colors"])
+
+    brick_spans, brick_id_grid, brick_tally, strength_pct = pack_interlocking_wall(
+        idx, names, depth=p.get("depth_studs", 2)
+    )
+    total_physical_bricks = sum(sum(w_counts.values()) for w_counts in brick_tally.values())
+
     used, counts = np.unique(idx, return_counts=True)
-    result.update(idx=idx, grid=pal_rgb[idx], names=names, palette=pal_rgb,
-                  counts={names[int(u)]: int(c) for u, c in zip(used, counts)})
+    depth_val = p.get("depth_studs", 2)
+    est_cost = sum(
+        qty * get_brick_price(c_name, width=w, depth=depth_val)
+        for c_name, w_counts in brick_tally.items()
+        for w, qty in w_counts.items()
+    )
+    raw_1x1_cost = sum(
+        cnt * get_brick_price(c_name, width=1, depth=depth_val)
+        for c_name, cnt in zip([names[int(u)] for u in used], counts)
+    )
+    result.update(
+        idx=idx, grid=pal_rgb[idx], names=names, palette=pal_rgb,
+        counts={names[int(u)]: int(c) for u, c in zip(used, counts)},
+        brick_spans=brick_spans, brick_id_grid=brick_id_grid,
+        brick_tally=brick_tally, total_physical_bricks=total_physical_bricks,
+        strength_pct=strength_pct, est_cost=est_cost, raw_1x1_cost=raw_1x1_cost,
+    )
     return Mosaic(**result)
 
 
@@ -496,8 +702,8 @@ def _stud_sprite(s):
     return mask.astype(np.float32), (1.0 + 0.25 * glow - 0.20 * rim).astype(np.float32)
 
 
-def render_preview(grid, w_ratio, h_ratio, style, studs, target_width=1100):
-    """Draw the brick wall. Returns a PIL image about `target_width` pixels wide."""
+def render_preview(grid, w_ratio, h_ratio, style, studs, target_width=1100, brick_id_grid=None, depth_studs=2, show_3d_top=True):
+    """Draw the brick wall with true merged 1x2/1x3/1x4 seams and an optional 2-stud 3D top edge."""
     ny, nx, _ = grid.shape
     if studs and style == "Round studs":
         s = int(np.clip(round(target_width / nx), 8, 24))
@@ -505,22 +711,101 @@ def render_preview(grid, w_ratio, h_ratio, style, studs, target_width=1100):
         mask, shade = _stud_sprite(s)
         m, sh = np.tile(mask, (ny, nx))[..., None], np.tile(shade, (ny, nx))[..., None]
         out = up * 0.45 * (1 - m) + np.clip(up * sh, 0, 255) * m
+        return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+    scale = int(np.clip(round(target_width / (nx * w_ratio)), 2, 14))
+    cw, ch = w_ratio * scale, h_ratio * scale
+    up = np.repeat(np.repeat(grid, ch, 0), cw, 1).astype(np.float32)
+
+    if brick_id_grid is not None and style in ("Bevel (3D)", "Outlines"):
+        # Upscale brick IDs to pixel level so seams ONLY appear between distinct physical bricks
+        bid_up = np.repeat(np.repeat(brick_id_grid, ch, 0), cw, 1)
+        top_edge = np.zeros_like(bid_up, dtype=bool)
+        top_edge[0, :] = True
+        top_edge[1:, :] = bid_up[1:, :] != bid_up[:-1, :]
+
+        left_edge = np.zeros_like(bid_up, dtype=bool)
+        left_edge[:, 0] = True
+        left_edge[:, 1:] = bid_up[:, 1:] != bid_up[:, :-1]
+
+        if style == "Outlines":
+            seam = top_edge | left_edge
+            up[seam] *= 0.38
+        else:  # Bevel (3D) across full 1x2, 1x3, 1x4 bricks
+            bot_edge = np.zeros_like(bid_up, dtype=bool)
+            bot_edge[-1, :] = True
+            bot_edge[:-1, :] = bid_up[:-1, :] != bid_up[1:, :]
+
+            right_edge = np.zeros_like(bid_up, dtype=bool)
+            right_edge[:, -1] = True
+            right_edge[:, :-1] = bid_up[:, :-1] != bid_up[:, 1:]
+
+            up[top_edge] = np.clip(up[top_edge] * 1.22, 0, 255)
+            up[left_edge] = np.clip(up[left_edge] * 1.12, 0, 255)
+            up[bot_edge] = np.clip(up[bot_edge] * 0.68, 0, 255)
+            up[right_edge] = np.clip(up[right_edge] * 0.75, 0, 255)
+        front_img = Image.fromarray(np.clip(up, 0, 255).astype(np.uint8))
     else:
-        scale = int(np.clip(round(target_width / (nx * w_ratio)), 2, 14))
-        cw, ch = w_ratio * scale, h_ratio * scale
-        up = np.repeat(np.repeat(grid, ch, 0), cw, 1).astype(np.float32)
         out = np.clip(up * np.tile(_shade_tile(cw, ch, style), (ny, nx, 1)), 0, 255)
-    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+        front_img = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+    # Optional 3D isometric top & side depth preview showing the 2-stud depth ("dots in length")
+    if show_3d_top and not studs and depth_studs >= 1:
+        from PIL import ImageDraw
+        fw, fh = front_img.size
+        depth_px = max(12, int(cw * depth_studs * 0.55))
+        canvas = Image.new("RGB", (fw + depth_px, fh + depth_px), (30, 34, 40))
+        canvas.paste(front_img, (0, depth_px))
+        draw = ImageDraw.Draw(canvas)
+
+        # Draw top 2-stud roof and studs for each brick in the top row (y = 0)
+        top_row_rgb = grid[0]
+        top_row_ids = brick_id_grid[0] if brick_id_grid is not None else np.arange(nx)
+        for x in range(nx):
+            r, g, b = [int(v) for v in top_row_rgb[x]]
+            top_color = (min(255, int(r * 1.15)), min(255, int(g * 1.15)), min(255, int(b * 1.15)))
+            x0, x1 = x * cw, (x + 1) * cw
+            poly = [(x0, depth_px), (x1, depth_px), (x1 + depth_px, 0), (x0 + depth_px, 0)]
+            draw.polygon(poly, fill=top_color)
+            if x == 0 or top_row_ids[x] != top_row_ids[x - 1]:
+                draw.line([(x0, depth_px), (x0 + depth_px, 0)], fill=(40, 40, 40), width=1)
+
+            # Draw the `depth_studs` (e.g. 2 dots) along the depth of each column
+            for d_i in range(depth_studs):
+                frac = (d_i + 0.5) / depth_studs
+                cx = int(x0 + cw * 0.5 + depth_px * frac)
+                cy = int(depth_px * (1.0 - frac))
+                rad_x = max(2, int(cw * 0.26))
+                rad_y = max(1, int(rad_x * 0.55))
+                draw.ellipse([cx - rad_x, cy - rad_y, cx + rad_x, cy + rad_y],
+                             fill=top_color, outline=(40, 40, 40))
+
+        # Draw right-hand 3D side wall (depth profile)
+        for y in range(ny):
+            r, g, b = [int(v) for v in grid[y, -1]]
+            side_color = (int(r * 0.72), int(g * 0.72), int(b * 0.72))
+            y0, y1 = depth_px + y * ch, depth_px + (y + 1) * ch
+            poly = [(fw, y0), (fw + depth_px, y0 - depth_px),
+                    (fw + depth_px, y1 - depth_px), (fw, y1)]
+            draw.polygon(poly, fill=side_color, outline=(40, 40, 40))
+        return canvas
+
+    return front_img
 
 
-def parts_csv(mosaic, piece):
+def parts_csv(mosaic, depth_studs):
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Color", "Hex", "R", "G", "B", "Piece", "Quantity"])
+    writer.writerow(["Color", "Hex", "Brick Size", "Quantity", "Est. Unit Price (USD)", "Est. Total Price (USD)"])
     lookup = {n: tuple(int(v) for v in mosaic.palette[i]) for i, n in enumerate(mosaic.names)}
-    for name, count in sorted(mosaic.counts.items(), key=lambda kv: -kv[1]):
+    for name, _ in sorted(mosaic.counts.items(), key=lambda kv: -kv[1]):
         r, g, b = lookup[name]
-        writer.writerow([name, f"#{r:02x}{g:02x}{b:02x}", r, g, b, piece, count])
+        w_counts = mosaic.brick_tally[name]
+        for w in (4, 2, 1):
+            qty = w_counts.get(w, 0)
+            if qty > 0:
+                unit_p = get_brick_price(name, width=w, depth=depth_studs)
+                writer.writerow([name, f"#{r:02x}{g:02x}{b:02x}", f"Brick {depth_studs}x{w}", qty, f"{unit_p:.2f}", f"{qty * unit_p:.2f}"])
     return buf.getvalue().encode("utf-8-sig")
 
 
@@ -541,17 +826,29 @@ def build_cached(file_bytes, params, palette_items):
 
 
 st.title("🧱 LEGO Mosaic Builder")
-st.write("Upload any picture and turn it into a LEGO brick mosaic with a parts list.")
+st.write("Upload any picture and turn it into a LEGO brick mosaic with a parts list and BrickLink cost breakdown.")
 
 with st.sidebar:
     st.header("1. Brick type")
     geo_name = st.selectbox("Piece type & view", list(GEOMETRY))
     geo = GEOMETRY[geo_name]
+    depth_studs = st.radio(
+        "Wall depth (3rd dimension / studs deep)", [1, 2], index=1, horizontal=True,
+        help="2 studs deep uses 2x1, 2x2, and 2x4 bricks so the wall stands solidly on its own."
+    )
+    show_3d_top = st.checkbox("Show 3D 2-stud top & side edge", value=True)
 
     st.header("2. Size")
     total_bricks = st.slider("Target number of pieces (budget)", 100, 20000, 2500, 100)
 
     st.header("3. Colors")
+    price_weight = st.slider(
+        "💰 BrickLink Price-to-Color Ratio", 0, 100, 55, 5,
+        help="0 = Pure color accuracy (ignores price, may use $0.95+ rare bricks). "
+             "55 = Sweet spot. "
+             "60+ = Blocks expensive retired bricks ($0.25+). "
+             "85+ = Strictly locks to the cheapest $0.05-$0.10 bricks."
+    )
     mode_label = st.radio("Palette", [
         "All official LEGO colors", "Pick specific LEGO colors", "LEGO grayscale (5 shades)",
         "Adaptive colors (not LEGO-limited)", "True color (no palette)"])
@@ -620,14 +917,19 @@ params = dict(
     transparent_bg=transparent_bg, auto_enhance=auto_enhance, brightness=brightness, contrast=contrast,
     saturation=saturation, sharpness=sharpness, detail_boost=detail_boost,
     despeckle={"Off": 0, "Light": 1, "Strong": 2}[despeckle_label], dither=use_dither,
+    depth_studs=depth_studs, price_weight=price_weight,
 )
 try:
     mosaic = build_cached(uploaded.getvalue(), params, tuple((n, tuple(c)) for n, c in active_palette.items()))
-except Exception:  # unreadable / corrupt / unsupported image
+except Exception:
     st.error("That file could not be read as a picture. Try a JPG, PNG or WEBP exported from your phone or computer.")
     st.stop()
 
-preview = render_preview(mosaic.grid, geo["w"], geo["h"], style, geo["studs"])
+preview = render_preview(
+    mosaic.grid, geo["w"], geo["h"], style, geo["studs"],
+    brick_id_grid=getattr(mosaic, "brick_id_grid", None),
+    depth_studs=depth_studs, show_3d_top=show_3d_top,
+)
 st.caption(f"Detected picture type: **{'logo / graphic' if mosaic.kind == 'graphic' else 'photo'}**"
            + ("" if kind == "auto" else " (set manually)"))
 
@@ -641,26 +943,49 @@ with col2:
 
 width_cm = mosaic.nx * geo["cm"][0]
 height_cm = mosaic.ny * geo["cm"][1]
+cost_banner = ""
+if getattr(mosaic, "est_cost", None) is not None:
+    saved = max(0.0, mosaic.raw_1x1_cost - mosaic.est_cost)
+    cost_banner = (
+        f" | 💰 **Est. Total Price:** ${mosaic.est_cost:,.2f} "
+        f"*(saves ${saved:,.2f} by merging into {depth_studs}×2 & {depth_studs}×4 bricks)*"
+    )
+
 st.info(
-    f"**Build specs:** {mosaic.nx} × {mosaic.ny} bricks | **Total pieces:** {mosaic.nx * mosaic.ny:,} | "
+    f"**Build specs:** {mosaic.nx} × {mosaic.ny} studs ({mosaic.nx * mosaic.ny:,} total studs) | "
+    f"**Physical bricks to buy:** {getattr(mosaic, 'total_physical_bricks', mosaic.nx * mosaic.ny):,} | "
     f"**Colors used:** {len(mosaic.counts) if mosaic.counts else 'unlimited'} | "
-    f"**Real-world size:** {width_cm:.1f} cm × {height_cm:.1f} cm"
+    f"**Size:** {width_cm:.1f} cm × {height_cm:.1f} cm" + cost_banner
 )
-st.caption("Screen colors are approximations of real LEGO colors. Check that each color is available as the piece "
-           "you need (BrickLink / Pick-a-Brick) before ordering.")
+st.caption("Screen colors and BrickLink prices are approximations. Only ×1, ×2, and ×4 bricks are used (×3 bricks excluded).")
 
 if mosaic.counts:
-    st.subheader(f"📦 Parts list ({len(mosaic.counts)} colors)")
+    st.subheader(
+        f"📦 Interlocking Parts & Price List ({mosaic.total_physical_bricks:,} physical bricks | "
+        f"Est. Total: ${mosaic.est_cost:,.2f} | Seam stagger: {mosaic.strength_pct:.0f}%)"
+    )
     lookup = {n: tuple(int(v) for v in mosaic.palette[i]) for i, n in enumerate(mosaic.names)}
-    cols = st.columns(4)
+    cols = st.columns(3)
     for i, (name, count) in enumerate(sorted(mosaic.counts.items(), key=lambda kv: -kv[1])):
         r, g, b = lookup[name]
-        with cols[i % 4]:
+        w_counts = mosaic.brick_tally[name]
+        color_total_cost = sum(
+            w_counts[w] * get_brick_price(name, width=w, depth=depth_studs)
+            for w in (4, 2, 1) if w_counts.get(w, 0) > 0
+        )
+        sizes_txt = " · ".join(
+            f"<b>{depth_studs}×{w}:</b> {w_counts[w]:,} "
+            f"<span style='color:#7ee787;'>(${w_counts[w] * get_brick_price(name, width=w, depth=depth_studs):,.2f})</span>"
+            for w in (4, 2, 1) if w_counts.get(w, 0) > 0
+        )
+        with cols[i % 3]:
             st.markdown(
-                f"<div style='display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid #444;"
-                f"border-radius:6px;margin-bottom:8px;'><div style='width:22px;height:26px;"
+                f"<div style='display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #444;"
+                f"border-radius:6px;margin-bottom:8px;'><div style='width:24px;height:32px;"
                 f"background:#{r:02x}{g:02x}{b:02x};border:1px solid #222;border-radius:3px;flex-shrink:0;'></div>"
-                f"<div><strong>{html.escape(name)}</strong><br><span style='color:#aaa;'>{count:,} pcs</span></div></div>",
+                f"<div><strong>{html.escape(name)}</strong> <span style='color:#888;'>({count:,} studs)</span> "
+                f"— <strong style='color:#7ee787;'>${color_total_cost:,.2f}</strong><br>"
+                f"<span style='color:#ccc;font-size:0.85em;'>{sizes_txt}</span></div></div>",
                 unsafe_allow_html=True,
             )
 
@@ -671,6 +996,6 @@ with d1:
     st.download_button("⬇️ Mosaic picture (PNG)", png.getvalue(), f"lego_mosaic_{mosaic.nx}x{mosaic.ny}.png", "image/png")
 if mosaic.counts:
     with d2:
-        st.download_button("⬇️ Parts list (CSV)", parts_csv(mosaic, geo["piece"]), "lego_parts_list.csv", "text/csv")
+        st.download_button("⬇️ Parts & Price list (CSV)", parts_csv(mosaic, depth_studs), "lego_parts_list.csv", "text/csv")
     with d3:
         st.download_button("⬇️ Build map: color per brick (CSV)", build_map_csv(mosaic), "lego_build_map.csv", "text/csv")
