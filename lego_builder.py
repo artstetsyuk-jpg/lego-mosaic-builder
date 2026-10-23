@@ -194,10 +194,9 @@ def get_brick_price(color_name, width=1, depth=1):
     depth_mult = 1.18 if depth == 2 else 1.0
     return base * BRICK_SIZE_PRICE_MULT.get(width, float(width)) * depth_mult
 GEOMETRY = {
-    "1x1 bricks, side view (15.8:9.6 ratio)": dict(w=8, h=5, cm=(1.58, 0.96), piece="Brick 1x1", studs=False),
-    "1x1 bricks, side view (standard 5:6)": dict(w=5, h=6, cm=(0.8, 0.96), piece="Brick 1x1", studs=False),
-    "1x1 plates, side view (5:2)": dict(w=5, h=2, cm=(0.8, 0.32), piece="Plate 1x1", studs=False),
-    "Studs facing out (1:1)": dict(w=1, h=1, cm=(0.8, 0.8), piece="Plate 1x1 (or round plate 1x1)", studs=True),
+    "Side-view bricks (2x1, 2x2, 2x4 interlocking — 5:6)": dict(w=5, h=6, cm=(0.8, 0.96), piece="Brick", studs=False),
+    "Side-view plates (5:2)": dict(w=5, h=2, cm=(0.8, 0.32), piece="Plate", studs=False),
+    "Studs facing out (1:1)": dict(w=1, h=1, cm=(0.8, 0.8), piece="Plate 1x1", studs=True),
 }
 
 
