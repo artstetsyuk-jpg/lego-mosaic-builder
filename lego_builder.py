@@ -22,6 +22,8 @@ st.set_page_config(page_title="LEGO Mosaic Builder", layout="wide")
 
 # ----------------------------------------------------------------------------
 # Palette (sRGB approximations of LEGO colors; real bricks vary with lighting and print)
+
+
 # ----------------------------------------------------------------------------
 LEGO_ALL_COLORS = {
     # --- Neutrals, Grays & Blacks (9) ---
@@ -817,6 +819,172 @@ def build_map_csv(mosaic):
     return buf.getvalue().encode("utf-8-sig")
 
 
+
+import os
+import tempfile
+
+# Official LDraw Color Codes for all 105 LEGO colors in your palette
+LDRAW_COLOR_CODES = {
+    "Milky White": 79, "White": 15, "Very Light Gray": 503, "Very Light Bluish Gray": 151,
+    "Light Bluish Gray": 71, "Light Gray": 7, "Dark Gray": 8, "Dark Bluish Gray": 72, "Black": 0,
+    "Very Light Orange": 509, "Light Nougat": 78, "Tan": 19, "Warm Tan": 371, "Dark Tan": 28,
+    "Nougat": 92, "Medium Nougat": 84, "Dark Nougat": 128, "Fabuland Brown": 450, "Sienna Brown": 370,
+    "Light Brown": 86, "Medium Brown": 86, "Dark Orange": 484, "Rust": 216, "Reddish Brown": 70,
+    "Brown": 6, "Umber Brown": 86, "Dark Brown": 308, "Dark Red": 320, "Red": 4, "Coral Red": 4,
+    "Reddish Orange": 402, "Salmon": 12, "Light Salmon": 100, "Coral": 353, "Sand Red": 335,
+    "Light Pink": 9, "Pink": 13, "Rose Pink": 13, "Bright Pink": 29, "Medium Dark Pink": 351,
+    "Dark Pink": 5, "Magenta": 26, "Reddish Violet": 26, "Earth Orange": 366, "Fabuland Orange": 191,
+    "Orange": 25, "Medium Orange": 462, "Bright Light Orange": 191, "Light Orange": 462,
+    "Dark Yellow": 182, "Yellow": 14, "Medium Yellow": 14, "Light Yellow": 18,
+    "Bright Light Yellow": 226, "Vibrant Neon Yellow": 368, "Lemon": 226,
+    "Spring Yellowish Green": 326, "Light Lime": 326, "Medium Lime": 115, "Lime": 27,
+    "Electric Green": 10, "Olive Green": 330, "Dark Olive Green": 288, "Light Green": 17,
+    "Medium Green": 74, "Sand Green": 378, "Bright Green": 10, "Green": 2, "Dark Green": 288,
+    "Deep Green": 288, "Light Aqua": 323, "Aqua": 118, "Light Turquoise": 11,
+    "Dark Turquoise (Teal)": 3, "Medium Azure": 322, "Dark Azure": 321, "Maersk Blue": 313,
+    "Sky Blue": 232, "Light Blue": 9, "Bright Light Blue": 212, "Pastel Blue": 73,
+    "Medium Blue": 73, "Sand Blue": 379, "Blue": 1, "Dark Royal Blue": 73, "Dark Blue": 272,
+    "Lavender": 31, "Light Lilac": 219, "Light Violet": 20, "Medium Lavender": 30,
+    "Sand Purple": 373, "Lilac": 219, "Medium Violet": 110, "Violet": 110, "Purple": 22,
+    "Dark Purple": 85, "Deep Purple": 85, "Pearl Light Gray": 135, "Metallic Silver": 80,
+    "Flat Silver": 179, "Pearl Dark Gray": 148, "Titanium Metallic": 87, "Warm Gold": 297,
+    "Pearl Gold": 297, "Copper": 134,
+}
+
+
+def _compute_staggered_spans(idx_grid, allowed_widths=(4, 2, 1)):
+    """Packs same-color horizontal runs into staggered 4, 2, 1 bricks so seams don't line up."""
+    ny, nx = idx_grid.shape
+    spans = np.zeros((ny, nx), dtype=np.int32)
+    prev_seams = set()
+
+    for y in range(ny - 1, -1, -1):
+        row = idx_grid[y]
+        # Dynamic programming across the row to minimize brick count while avoiding seams below
+        dp_cost = [10**9] * (nx + 1)
+        dp_prev = [0] * (nx + 1)
+        dp_cost[0] = 0
+
+        for end in range(1, nx + 1):
+            for w in allowed_widths:
+                start = end - w
+                if start < 0:
+                    continue
+                if np.all(row[start:end] == row[start]):
+                    seam_penalty = 25 if (end < nx and end in prev_seams) else 0
+                    cost = dp_cost[start] + 10 + seam_penalty
+                    if cost < dp_cost[end]:
+                        dp_cost[end] = cost
+                        dp_prev[end] = w
+
+        cur = nx
+        new_seams = set()
+        while cur > 0:
+            w = dp_prev[cur]
+            start = cur - w
+            spans[y, start] = w
+            if cur < nx:
+                new_seams.add(cur)
+            cur = start
+        prev_seams = new_seams
+
+    return spans
+
+
+def export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=2):
+    """
+    Generates an LDraw (.ldr) 3D model where every merged brick (2x4, 2x2, 2x1 or 1x4, 1x2, 1x1)
+    is a separate, clickable 3D LEGO part inside BrickLink Studio.
+    """
+    if getattr(mosaic, "grid", None) is None:
+        return None
+
+    ny, nx, _ = mosaic.grid.shape
+    is_plate = "plate" in geo_name.lower()
+    is_studs_out = "studs facing out" in geo_name.lower()
+
+    # Map every pixel to an official LEGO color name & LDraw code (works even in Adaptive/True Color modes)
+    lego_names = list(LEGO_ALL_COLORS.keys())
+    lego_rgb = np.array(list(LEGO_ALL_COLORS.values()), dtype=np.float32)
+
+    if getattr(mosaic, "idx", None) is not None and getattr(mosaic, "names", None) is not None:
+        idx_grid = mosaic.idx
+        row_names = mosaic.names
+    else:
+        flat_px = mosaic.grid.reshape(-1, 3).astype(np.float32)
+        d2 = ((flat_px[:, None, :] - lego_rgb[None, :, :]) ** 2).sum(axis=2)
+        idx_grid = d2.argmin(axis=1).reshape(ny, nx)
+        row_names = lego_names
+
+    # Map each palette entry to an official LDraw integer color ID
+    palette_ldraw_ids = []
+    for i, name in enumerate(row_names):
+        if name in LDRAW_COLOR_CODES:
+            palette_ldraw_ids.append(LDRAW_COLOR_CODES[name])
+        else:
+            # Nearest LEGO color fallback for "Color 1", "Color 2", etc. in Adaptive mode
+            rgb = mosaic.palette[i].astype(np.float32)
+            closest_idx = int(((lego_rgb - rgb) ** 2).sum(axis=1).argmin())
+            palette_ldraw_ids.append(LDRAW_COLOR_CODES.get(lego_names[closest_idx], 15))
+
+    # Use existing interlocking brick spans, or compute staggered 4/2/1 spans automatically
+    spans = getattr(mosaic, "brick_spans", None)
+    if spans is None and not is_studs_out:
+        spans = _compute_staggered_spans(idx_grid, allowed_widths=(4, 2, 1))
+    elif is_studs_out:
+        spans = np.ones((ny, nx), dtype=np.int32)
+
+    # LDraw coordinate units: 1 stud width = 20 LDU, 1 brick height = 24 LDU, 1 plate height = 8 LDU
+    stud_w = 20
+    layer_h = 8 if is_plate else 24
+
+    # Official LDraw 3D part numbers for each brick width (1, 2, 3, 4)
+    if is_plate:
+        parts_d1 = {1: "3024", 2: "3023", 3: "3623", 4: "3710"}
+        parts_d2 = {1: "3023", 2: "3022", 3: "3021", 4: "3020"}
+    else:
+        parts_d1 = {1: "3005", 2: "3004", 3: "3622", 4: "3010"}
+        parts_d2 = {1: "3004", 2: "3003", 3: "3002", 4: "3001"}
+
+    lines = [
+        "0 LEGO Interlocking Side-Stack Mosaic",
+        "0 Name: lego_mosaic.ldr",
+        "0 Author: LEGO Mosaic Builder",
+        "0 !LDRAW_ORG Unofficial_Model",
+    ]
+
+    x_offset = nx * stud_w // 2  # Center model at X=0 in Studio
+
+    # Stack rows from bottom (ny - 1) to top (0) so Step 1 is the bottom base layer
+    for y in range(ny - 1, -1, -1):
+        ldraw_y = (y - ny) * layer_h
+        for x in range(nx):
+            w = int(spans[y, x])
+            if w <= 0:
+                continue  # Covered by a wider brick to the left
+
+            ldraw_color = palette_ldraw_ids[int(idx_grid[y, x])]
+            ldraw_x = (x * stud_w + w * (stud_w // 2)) - x_offset
+            ldraw_z = 0
+
+            if is_studs_out:
+                lines.append(
+                    f"1 {ldraw_color} {ldraw_x} 0 {(y * stud_w) - (ny * 10)} 1 0 0 0 1 0 0 0 1 3024.dat"
+                )
+            else:
+                if depth_studs == 2:
+                    part_id = parts_d2.get(w, "3004")
+                    # When w == 1 and depth == 2, rotate a 1x2 brick (3004) 90 degrees so it is 1 stud wide x 2 studs deep
+                    rot = "0 0 1 0 1 0 -1 0 0" if w == 1 else "1 0 0 0 1 0 0 0 1"
+                else:
+                    part_id = parts_d1.get(w, "3005")
+                    rot = "1 0 0 0 1 0 0 0 1"
+
+                lines.append(f"1 {ldraw_color} {ldraw_x} {ldraw_y} {ldraw_z} {rot} {part_id}.dat")
+
+        lines.append("0 STEP")
+
+    return "\r\n".join(lines)
 # ============================================================================
 # UI
 # ============================================================================
@@ -999,3 +1167,105 @@ if mosaic.counts:
         st.download_button("⬇️ Parts & Price list (CSV)", parts_csv(mosaic, depth_studs), "lego_parts_list.csv", "text/csv")
     with d3:
         st.download_button("⬇️ Build map: color per brick (CSV)", build_map_csv(mosaic), "lego_build_map.csv", "text/csv")
+        
+# Official BrickLink Color IDs for Wanted List (.xml) export
+BRICKLINK_COLOR_IDS = {
+    "Milky White": 60, "White": 1, "Very Light Gray": 49, "Very Light Bluish Gray": 99,
+    "Light Bluish Gray": 86, "Light Gray": 9, "Dark Gray": 10, "Dark Bluish Gray": 85, "Black": 11,
+    "Very Light Orange": 96, "Light Nougat": 90, "Tan": 2, "Warm Tan": 241, "Dark Tan": 69,
+    "Nougat": 28, "Medium Nougat": 150, "Dark Nougat": 225, "Fabuland Brown": 106, "Sienna Brown": 240,
+    "Light Brown": 91, "Medium Brown": 240, "Dark Orange": 68, "Rust": 27, "Reddish Brown": 88,
+    "Brown": 8, "Umber Brown": 168, "Dark Brown": 120, "Dark Red": 59, "Red": 5, "Coral Red": 220,
+    "Reddish Orange": 167, "Salmon": 25, "Light Salmon": 26, "Coral": 220, "Sand Red": 58,
+    "Light Pink": 56, "Pink": 23, "Rose Pink": 23, "Bright Pink": 104, "Medium Dark Pink": 94,
+    "Dark Pink": 47, "Magenta": 71, "Reddish Violet": 71, "Earth Orange": 29, "Fabuland Orange": 160,
+    "Orange": 4, "Medium Orange": 31, "Bright Light Orange": 110, "Light Orange": 32,
+    "Dark Yellow": 161, "Yellow": 3, "Medium Yellow": 33, "Light Yellow": 33,
+    "Bright Light Yellow": 103, "Vibrant Neon Yellow": 236, "Lemon": 103,
+    "Spring Yellowish Green": 158, "Light Lime": 35, "Medium Lime": 76, "Lime": 34,
+    "Electric Green": 36, "Olive Green": 155, "Dark Olive Green": 80, "Light Green": 38,
+    "Medium Green": 37, "Sand Green": 48, "Bright Green": 36, "Green": 6, "Dark Green": 80,
+    "Deep Green": 80, "Light Aqua": 152, "Aqua": 41, "Light Turquoise": 40,
+    "Dark Turquoise (Teal)": 39, "Medium Azure": 156, "Dark Azure": 153, "Maersk Blue": 72,
+    "Sky Blue": 87, "Light Blue": 62, "Bright Light Blue": 105, "Pastel Blue": 72,
+    "Medium Blue": 42, "Sand Blue": 55, "Blue": 7, "Dark Royal Blue": 109, "Dark Blue": 63,
+    "Lavender": 154, "Light Lilac": 245, "Light Violet": 44, "Medium Lavender": 157,
+    "Sand Purple": 54, "Lilac": 245, "Medium Violet": 73, "Violet": 43, "Purple": 24,
+    "Dark Purple": 89, "Deep Purple": 89, "Pearl Light Gray": 66, "Metallic Silver": 67,
+    "Flat Silver": 95, "Pearl Dark Gray": 77, "Titanium Metallic": 77, "Warm Gold": 115,
+    "Pearl Gold": 115, "Copper": 84,
+}
+
+
+def export_bricklink_wanted_xml(mosaic, geo_name, depth_studs=2):
+    """Generate a BrickLink Wanted List XML file (matches 'Export as WL xml...' in Studio)."""
+    tally = getattr(mosaic, "brick_tally", None) or getattr(mosaic, "interlocking_parts", None)
+    if not tally:
+        return None
+
+    is_plate = "plate" in geo_name.lower()
+    is_studs_out = "studs facing out" in geo_name.lower()
+
+    if is_studs_out:
+        part_map = {1: "3024", 2: "3023", 3: "3623", 4: "3710"}
+    elif is_plate:
+        part_map = {1: "3023", 2: "3022", 3: "3021", 4: "3020"} if depth_studs == 2 else {1: "3024", 2: "3023", 3: "3623", 4: "3710"}
+    else:
+        part_map = {1: "3004", 2: "3003", 3: "3002", 4: "3001"} if depth_studs == 2 else {1: "3005", 2: "3004", 3: "3622", 4: "3010"}
+
+    xml_lines = ["<INVENTORY>"]
+    for color_name, width_counts in tally.items():
+        bl_color = BRICKLINK_COLOR_IDS.get(color_name, 11)
+        if isinstance(width_counts, dict):
+            for w, qty in width_counts.items():
+                if int(qty) > 0:
+                    part_id = part_map.get(int(w), "3005")
+                    xml_lines.append(
+                        f"  <ITEM>\n"
+                        f"    <ITEMTYPE>P</ITEMTYPE>\n"
+                        f"    <ITEMID>{part_id}</ITEMID>\n"
+                        f"    <COLOR>{bl_color}</COLOR>\n"
+                        f"    <MINQTY>{int(qty)}</MINQTY>\n"
+                        f"  </ITEM>"
+                    )
+    xml_lines.append("</INVENTORY>")
+    return "\n".join(xml_lines)
+st.subheader("🧱 BrickLink Studio & Shopping Exports")
+ldr_data = export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=depth_studs)
+xml_data = export_bricklink_wanted_xml(mosaic, geo_name, depth_studs=depth_studs)
+
+if ldr_data:
+    b_col1, b_col2, b_col3 = st.columns(3)
+
+    with b_col1:
+        st.download_button(
+            label="⬇️ Download for BrickLink Studio (.ldr)",
+            data=ldr_data.encode("utf-8"),
+            file_name=f"lego_mosaic_{mosaic.nx}x{mosaic.ny}.ldr",
+            mime="application/x-ldraw",
+            help="In BrickLink Studio, click File -> Open (CTRL+O) or File -> Import -> Import Model and select this .ldr file."
+        )
+
+    with b_col2:
+        if xml_data:
+            st.download_button(
+                label="🛒 Download BrickLink WL (.xml)",
+                data=xml_data.encode("utf-8"),
+                file_name=f"bricklink_wanted_{mosaic.nx}x{mosaic.ny}.xml",
+                mime="application/xml",
+                help="Upload directly to BrickLink.com -> Want -> Upload -> Upload BrickLink XML format."
+            )
+
+    with b_col3:
+        # 1-Click local launcher: saves the .ldr file and opens it straight into BrickLink Studio on Windows
+        if hasattr(os, "startfile"):
+            if st.button("🚀 Open Directly in BrickLink Studio"):
+                out_path = os.path.join(
+                    tempfile.gettempdir(), f"lego_mosaic_{mosaic.nx}x{mosaic.ny}.ldr"
+                )
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(ldr_data)
+                os.startfile(out_path)
+                st.success(f"Sent to BrickLink Studio! ({out_path})")
+
+
