@@ -957,12 +957,15 @@ def export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=2):
     x_offset = nx * stud_w // 2  # Center model at X=0 in Studio
 
     # Stack rows from bottom (ny - 1) to top (0) so Step 1 is the bottom base layer
+    # Складаємо ряди знизу вгору (ny - 1 -> 0), розбиваючи кожен ряд на кроки по 16-20 пікселів
     for y in range(ny - 1, -1, -1):
         ldraw_y = (y - ny) * layer_h
+        studs_in_step = 0
+
         for x in range(nx):
             w = int(spans[y, x])
             if w <= 0:
-                continue  # Covered by a wider brick to the left
+                continue  # Цей піксель вже зайнятий ширшою цеглиною зліва
 
             ldraw_color = palette_ldraw_ids[int(idx_grid[y, x])]
             ldraw_x = (x * stud_w + w * (stud_w // 2)) - x_offset
@@ -975,7 +978,6 @@ def export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=2):
             else:
                 if depth_studs == 2:
                     part_id = parts_d2.get(w, "3004")
-                    # When w == 1 and depth == 2, rotate a 1x2 brick (3004) 90 degrees so it is 1 stud wide x 2 studs deep
                     rot = "0 0 1 0 1 0 -1 0 0" if w == 1 else "1 0 0 0 1 0 0 0 1"
                 else:
                     part_id = parts_d1.get(w, "3005")
@@ -983,7 +985,15 @@ def export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=2):
 
                 lines.append(f"1 {ldraw_color} {ldraw_x} {ldraw_y} {ldraw_z} {rot} {part_id}.dat")
 
-        lines.append("0 STEP")
+            studs_in_step += w
+            # Коли набралося 16-20 пікселів і ряд ще не закінчився — робимо новий крок у Studio
+            if studs_in_step >= studs_per_step and (x + w) < nx:
+                lines.append("0 STEP")
+                studs_in_step = 0
+
+        # Закриваємо крок у кінці ряду перед переходом на наступний рівень вгору
+        if studs_in_step > 0:
+            lines.append("0 STEP")
 
     return "\r\n".join(lines)
 # ============================================================================
@@ -1232,7 +1242,14 @@ def export_bricklink_wanted_xml(mosaic, geo_name, depth_studs=2):
     xml_lines.append("</INVENTORY>")
     return "\n".join(xml_lines)
 st.subheader("🧱 BrickLink Studio & Shopping Exports")
-ldr_data = export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=depth_studs)
+studs_per_step = st.slider(
+    "Кількість пікселів (стадів) в одному кроці інструкції Studio",
+    min_value=8, max_value=40, value=16, step=2,
+    help="Розбиває кожен горизонтальний ряд на менші підкроки по 16–20 пікселів для зручної інструкції."
+)
+ldr_data = export_bricklink_studio_ldr(
+    mosaic, geo_name, depth_studs=depth_studs, studs_per_step=studs_per_step
+)
 xml_data = export_bricklink_wanted_xml(mosaic, geo_name, depth_studs=depth_studs)
 
 if ldr_data:
