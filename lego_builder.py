@@ -1024,17 +1024,20 @@ with st.sidebar:
                                  help="Higher keeps thinner lines. Lower gives cleaner, thinner shapes.")
         despeckle_label = st.selectbox("Remove stray bricks", ["Off", "Light", "Strong"])
         use_dither = st.checkbox("Dither (smoother gradients, noisier look)", value=False)
-    with st.expander("🎨 Custom Color Override (Swap 1 color for another)"):
-        enable_override = st.checkbox("Enable color remapping", value=False)
+        with st.expander("🎨 Custom Color Override (Swap 1 color for another)"):
+        enable_override = st.checkbox(
+            "Enable color remapping",
+            value=False,
+            key="enable_color_remapping"
+        )
+
         color_swap_map = {}
-        if enable_override and 'mosaic' in locals() and getattr(mosaic, "names", None):
-            st.write("Map any generated color to a replacement:")
-            present_colors = [mosaic.names[int(u)] for u in np.unique(mosaic.idx)] if hasattr(mosaic, 'idx') else list(active_palette.keys())
-            # Limit dropdown options to the top active colors present in the mosaic
-            for src_col in present_colors[:8]:
-                target_col = st.selectbox(f"Replace '{src_col}' with:", ["(Keep original)"] + list(active_palette.keys()), key=f"swap_{src_col}")
-                if target_col != "(Keep original)":
-                    color_swap_map[src_col] = target_col
+
+        if enable_override:
+            st.info(
+                "Color remapping is enabled. The color selection controls "
+                "will be available after the mosaic has been generated."
+            )
 
     st.header("5. Look")
     style_options = ["Round studs", "Flat squares"] if geo["studs"] else ["Bevel (3D)", "Outlines", "Flat"]
