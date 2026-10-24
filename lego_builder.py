@@ -1013,23 +1013,23 @@ with st.sidebar:
     pan_y = st.slider("Move up ↕ down", 0, 100, 50) / 100
     transparent_bg = st.radio("Transparent areas become", ["White", "Black"], horizontal=True)
 
-    with st.expander("Fine tuning"):
-        
-        auto_enhance = st.checkbox("Auto-enhance photos (levels + slight color boost)", value=True)
-        brightness = st.slider("Brightness", 0.5, 1.8, 1.0, 0.05)
-        contrast = st.slider("Contrast", 0.5, 1.8, 1.0, 0.05)
-        saturation = st.slider("Color intensity", 0.0, 2.0, 1.0, 0.05)
-        sharpness = st.slider("Sharpness (photos)", 0.5, 3.0, 1.0, 0.1)
-        detail_boost = st.slider("Thin-detail boost (logos / graphics)", 0, 100, 80,
-                                 help="Higher keeps thinner lines. Lower gives cleaner, thinner shapes.")
-        despeckle_label = st.selectbox("Remove stray bricks", ["Off", "Light", "Strong"])
-        use_dither = st.checkbox("Dither (smoother gradients, noisier look)", value=False)
         with st.expander("🎨 Custom Color Override (Swap 1 color for another)"):
         enable_override = st.checkbox(
             "Enable color remapping",
             value=False,
             key="enable_color_remapping"
         )
+
+        color_swap_map = {}
+
+        if enable_override:
+            st.write("Map generated colors to replacement colors.")
+
+            st.info(
+                "Upload a picture first. The actual color replacement "
+                "controls require the generated mosaic, which is created "
+                "later in the script."
+            )
 
         color_swap_map = {}
 
