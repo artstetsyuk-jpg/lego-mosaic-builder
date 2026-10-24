@@ -1029,9 +1029,9 @@ with st.sidebar:
         color_swap_map = {}
         if enable_override and 'mosaic' in locals() and getattr(mosaic, "names", None):
             st.write("Map any generated color to a replacement:")
-            # Let the user pick from colors currently present in the mosaic
             present_colors = [mosaic.names[int(u)] for u in np.unique(mosaic.idx)] if hasattr(mosaic, 'idx') else list(active_palette.keys())
-            for src_col in present_colors[:8]:  // limit to top 8 active colors for simplicity
+            # Limit dropdown options to the top active colors present in the mosaic
+            for src_col in present_colors[:8]:
                 target_col = st.selectbox(f"Replace '{src_col}' with:", ["(Keep original)"] + list(active_palette.keys()), key=f"swap_{src_col}")
                 if target_col != "(Keep original)":
                     color_swap_map[src_col] = target_col
