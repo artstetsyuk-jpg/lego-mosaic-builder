@@ -1241,6 +1241,102 @@ def export_bricklink_wanted_xml(mosaic, geo_name, depth_studs=2):
                     )
     xml_lines.append("</INVENTORY>")
     return "\n".join(xml_lines)
+def export_bricklink_studio_ldr(mosaic, geo_name, depth_studs=2, studs_per_step=16):
+    """
+    Генерує 3D-модель LDraw (.ldr) для BrickLink Studio, розбиваючи кожен ряд
+    на зручні підкроки по `studs_per_step` стадів (пікселів).
+    """
+    if getattr(mosaic, "grid", None) is None:
+        return None
+
+    ny, nx, _ = mosaic.grid.shape
+    is_plate = "plate" in geo_name.lower()
+    is_studs_out = "studs facing out" in geo_name.lower()
+
+    lego_names = list(LEGO_ALL_COLORS.keys())
+    lego_rgb = np.array(list(LEGO_ALL_COLORS.values()), dtype=np.float32)
+
+    if getattr(mosaic, "idx", None) is not None and getattr(mosaic, "names", None) is not None:
+        idx_grid = mosaic.idx
+        row_names = mosaic.names
+    else:
+        flat_px = mosaic.grid.reshape(-1, 3).astype(np.float32)
+        d2 = ((flat_px[:, None, :] - lego_rgb[None, :, :]) ** 2).sum(axis=2)
+        idx_grid = d2.argmin(axis=1).reshape(ny, nx)
+        row_names = lego_names
+
+    palette_ldraw_ids = []
+    for i, name in enumerate(row_names):
+        if name in LDRAW_COLOR_CODES:
+            palette_ldraw_ids.append(LDRAW_COLOR_CODES[name])
+        else:
+            rgb = mosaic.palette[i].astype(np.float32)
+            closest_idx = int(((lego_rgb - rgb) ** 2).sum(axis=1).argmin())
+            palette_ldraw_ids.append(LDRAW_COLOR_CODES.get(lego_names[closest_idx], 15))
+
+    spans = getattr(mosaic, "brick_spans", None)
+    if spans is None and not is_studs_out:
+        spans = _compute_staggered_spans(idx_grid, allowed_widths=(4, 2, 1))
+    elif is_studs_out:
+        spans = np.ones((ny, nx), dtype=np.int32)
+
+    stud_w = 20
+    layer_h = 8 if is_plate else 24
+
+    if is_plate:
+        parts_d1 = {1: "3024", 2: "3023", 3: "3623", 4: "3710"}
+        parts_d2 = {1: "3023", 2: "3022", 3: "3021", 4: "3020"}
+    else:
+        parts_d1 = {1: "3005", 2: "3004", 3: "3622", 4: "3010"}
+        parts_d2 = {1: "3004", 2: "3003", 3: "3002", 4: "3001"}
+
+    lines = [
+        "0 LEGO Interlocking Side-Stack Mosaic",
+        "0 Name: lego_mosaic.ldr",
+        "0 Author: LEGO Mosaic Builder",
+        "0 !LDRAW_ORG Unofficial_Model",
+    ]
+
+    x_offset = nx * stud_w // 2
+
+    for y in range(ny - 1, -1, -1):
+        ldraw_y = (y - ny) * layer_h
+        studs_in_step = 0
+
+        for x in range(nx):
+            w = int(spans[y, x])
+            if w <= 0:
+                continue
+
+            ldraw_color = palette_ldraw_ids[int(idx_grid[y, x])]
+            ldraw_x = (x * stud_w + w * (stud_w // 2)) - x_offset
+            ldraw_z = 0
+
+            if is_studs_out:
+                lines.append(
+                    f"1 {ldraw_color} {ldraw_x} 0 {(y * stud_w) - (ny * 10)} 1 0 0 0 1 0 0 0 1 3024.dat"
+                )
+            else:
+                if depth_studs == 2:
+                    part_id = parts_d2.get(w, "3004")
+                    rot = "0 0 1 0 1 0 -1 0 0" if w == 1 else "1 0 0 0 1 0 0 0 1"
+                else:
+                    part_id = parts_d1.get(w, "3005")
+                    rot = "1 0 0 0 1 0 0 0 1"
+
+                lines.append(f"1 {ldraw_color} {ldraw_x} {ldraw_y} {ldraw_z} {rot} {part_id}.dat")
+
+            studs_in_step += w
+            if studs_in_step >= studs_per_step and (x + w) < nx:
+                lines.append("0 STEP")
+                studs_in_step = 0
+
+        if studs_in_step > 0:
+            lines.append("0 STEP")
+
+    return "\r\n".join(lines)
+
+
 st.subheader("🧱 BrickLink Studio & Shopping Exports")
 studs_per_step = st.slider(
     "Кількість пікселів (стадів) в одному кроці інструкції Studio",
@@ -1275,7 +1371,6 @@ if ldr_data:
             )
 
     with b_col3:
-        # 1-Click local launcher: saves the .ldr file and opens it straight into BrickLink Studio on Windows
         if hasattr(os, "startfile"):
             if st.button("🚀 Open Directly in BrickLink Studio"):
                 out_path = os.path.join(
@@ -1285,5 +1380,4 @@ if ldr_data:
                     f.write(ldr_data)
                 os.startfile(out_path)
                 st.success(f"Sent to BrickLink Studio! ({out_path})")
-
 
