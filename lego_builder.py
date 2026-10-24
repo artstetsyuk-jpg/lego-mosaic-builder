@@ -584,7 +584,15 @@ def build_mosaic(file_bytes, p, palette_items):
     else:
         cell_lab = srgb8_to_oklab(cells)
         idx = dither(cell_lab, pal_lab) if p["dither"] else nearest(cell_lab, pal_lab, price_penalty=price_penalty).reshape(ny, nx)
-
+    # Apply custom color overrides if specified by the user
+    color_swap_map = p.get("color_swap_map", {})
+    if color_swap_map and names:
+        name_to_idx = {n: i for i, n in enumerate(names)}
+        for src_name, tgt_name in color_swap_map.items():
+            if src_name in name_to_idx and tgt_name in name_to_idx:
+                src_i = name_to_idx[src_name]
+                tgt_i = name_to_idx[tgt_name]
+                idx[idx == src_i] = tgt_i
     idx = despeckle(idx, len(pal_rgb), p["despeckle"])
     idx = limit_colors(idx, cell_lab, pal_lab, p["max_colors"])
 
@@ -1006,6 +1014,7 @@ with st.sidebar:
     transparent_bg = st.radio("Transparent areas become", ["White", "Black"], horizontal=True)
 
     with st.expander("Fine tuning"):
+        
         auto_enhance = st.checkbox("Auto-enhance photos (levels + slight color boost)", value=True)
         brightness = st.slider("Brightness", 0.5, 1.8, 1.0, 0.05)
         contrast = st.slider("Contrast", 0.5, 1.8, 1.0, 0.05)
@@ -1015,6 +1024,17 @@ with st.sidebar:
                                  help="Higher keeps thinner lines. Lower gives cleaner, thinner shapes.")
         despeckle_label = st.selectbox("Remove stray bricks", ["Off", "Light", "Strong"])
         use_dither = st.checkbox("Dither (smoother gradients, noisier look)", value=False)
+    with st.expander("🎨 Custom Color Override (Swap 1 color for another)"):
+        enable_override = st.checkbox("Enable color remapping", value=False)
+        color_swap_map = {}
+        if enable_override and 'mosaic' in locals() and getattr(mosaic, "names", None):
+            st.write("Map any generated color to a replacement:")
+            # Let the user pick from colors currently present in the mosaic
+            present_colors = [mosaic.names[int(u)] for u in np.unique(mosaic.idx)] if hasattr(mosaic, 'idx') else list(active_palette.keys())
+            for src_col in present_colors[:8]:  // limit to top 8 active colors for simplicity
+                target_col = st.selectbox(f"Replace '{src_col}' with:", ["(Keep original)"] + list(active_palette.keys()), key=f"swap_{src_col}")
+                if target_col != "(Keep original)":
+                    color_swap_map[src_col] = target_col
 
     st.header("5. Look")
     style_options = ["Round studs", "Flat squares"] if geo["studs"] else ["Bevel (3D)", "Outlines", "Flat"]
