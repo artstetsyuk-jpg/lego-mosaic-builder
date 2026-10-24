@@ -1042,10 +1042,12 @@ if uploaded is None:
 
 params = dict(
     w_ratio=geo["w"], h_ratio=geo["h"], total=total_bricks, color_mode=color_mode, num_colors=num_colors,
-    max_colors=0, kind=kind, crop_aspect=CROPS[crop_label], zoom=zoom, pan_x=pan_x, pan_y=pan_y,
+    max_colors=max_colors, kind=kind, crop_aspect=CROPS[crop_label], zoom=zoom, pan_x=pan_x, pan_y=pan_y,
     transparent_bg=transparent_bg, auto_enhance=auto_enhance, brightness=brightness, contrast=contrast,
-    saturation=saturation, sharpness=sharpness, detail_boost=detail_boost, 
-    color_swap_map=color_swap_map,  # <--- Added this!
+    saturation=saturation, sharpness=sharpness, detail_boost=detail_boost,
+    despeckle={"Off": 0, "Light": 1, "Strong": 2}[despeckle_label], dither=use_dither,
+    depth_studs=depth_studs, price_weight=price_weight,
+    color_swap_map=color_swap_map,  # <--- THIS IS THE MISSING PIECE
 )
 try:
     mosaic = build_cached(uploaded.getvalue(), params, tuple((n, tuple(c)) for n, c in active_palette.items()))
