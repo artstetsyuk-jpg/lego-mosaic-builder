@@ -585,6 +585,29 @@ def build_mosaic(file_bytes, p, palette_items):
         cell_lab = srgb8_to_oklab(cells)
         idx = dither(cell_lab, pal_lab) if p["dither"] else nearest(cell_lab, pal_lab, price_penalty=price_penalty).reshape(ny, nx)
 
+    idx = despeckle(idx, len(pal_rgb), p["despeckle"])
+    idx = limit_colors(idx, cell_lab, pal_lab, p["max_colors"])
+
+    # Save the original LEGO result BEFORE swapping colors (for the 2nd photo)
+    grid_before_swap = pal_rgb[idx].copy()
+    _, brick_id_before_swap, _, _ = pack_interlocking_wall(
+        idx, names, depth=p.get("depth_studs", 2)
+    )
+
+    # Apply Custom Color Override swaps
+    has_swaps = False
+    color_swap_map = p.get("color_swap_map", {})
+    if color_swap_map and names:
+        idx = idx.copy()
+        name_to_idx = {n: i for i, n in enumerate(names)}
+        for src_name, tgt_name in color_swap_map.items():
+            if src_name in name_to_idx and tgt_name in name_to_idx:
+                src_i = name_to_idx[src_name]
+                tgt_i = name_to_idx[tgt_name]
+                if np.any(idx == src_i):
+                    idx[idx == src_i] = tgt_i
+                    has_swaps = True
+
     brick_spans, brick_id_grid, brick_tally, strength_pct = pack_interlocking_wall(
         idx, names, depth=p.get("depth_studs", 2)
     )
@@ -602,7 +625,9 @@ def build_mosaic(file_bytes, p, palette_items):
         for c_name, cnt in zip([names[int(u)] for u in used], counts)
     )
     result.update(
-        idx=idx, grid=pal_rgb[idx], names=names, palette=pal_rgb,
+        idx=idx, grid=pal_rgb[idx],
+        grid_before_swap=grid_before_swap, brick_id_before_swap=brick_id_before_swap,
+        has_swaps=has_swaps, names=names, palette=pal_rgb,
         counts={names[int(u)]: int(c) for u, c in zip(used, counts)},
         brick_spans=brick_spans, brick_id_grid=brick_id_grid,
         brick_tally=brick_tally, total_physical_bricks=total_physical_bricks,
@@ -1063,13 +1088,30 @@ preview = render_preview(
 st.caption(f"Detected picture type: **{'logo / graphic' if mosaic.kind == 'graphic' else 'photo'}**"
            + ("" if kind == "auto" else " (set manually)"))
 
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("Your picture (after crop)")
-    st.image(mosaic.prepared)
-with col2:
-    st.subheader(f"LEGO result ({mosaic.nx} wide × {mosaic.ny} tall)")
-    st.image(preview)
+if getattr(mosaic, "has_swaps", False):
+    preview_before = render_preview(
+        mosaic.grid_before_swap, geo["w"], geo["h"], style, geo["studs"],
+        brick_id_grid=getattr(mosaic, "brick_id_before_swap", None),
+        depth_studs=depth_studs, show_3d_top=show_3d_top,
+    )
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.subheader("1. Your picture (after crop)")
+        st.image(mosaic.prepared)
+    with col2:
+        st.subheader("2. Original LEGO result")
+        st.image(preview_before)
+    with col3:
+        st.subheader("3. Result after color swap")
+        st.image(preview)
+else:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Your picture (after crop)")
+        st.image(mosaic.prepared)
+    with col2:
+        st.subheader(f"LEGO result ({mosaic.nx} wide × {mosaic.ny} tall)")
+        st.image(preview)
 
 width_cm = mosaic.nx * geo["cm"][0]
 height_cm = mosaic.ny * geo["cm"][1]
