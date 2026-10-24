@@ -26,10 +26,8 @@ st.set_page_config(page_title="LEGO Mosaic Builder", layout="wide")
 
 # ----------------------------------------------------------------------------
 LEGO_ALL_COLORS = {
-    # --- Neutrals, Grays & Blacks (9) ---
-    "Milky White": (255, 255, 255),
-    "White": (242, 243, 242),
-    "Very Light Gray": (230, 227, 218),
+    # --- Neutrals, Grays & Blacks (7) ---
+    "White": (255, 255, 255),
     "Very Light Bluish Gray": (229, 228, 223),
     "Light Bluish Gray": (160, 165, 169),
     "Light Gray": (155, 161, 157),
@@ -37,153 +35,90 @@ LEGO_ALL_COLORS = {
     "Dark Bluish Gray": (108, 110, 104),
     "Black": (18, 18, 18),
 
-    # --- Tans, Nougats, Flesh & Browns (18) ---
-    "Very Light Orange": (243, 207, 155),
+    # --- Tans, Nougats & Browns (10) ---
     "Light Nougat": (246, 215, 179),
     "Tan": (228, 205, 158),
-    "Warm Tan": (204, 163, 115),
     "Dark Tan": (149, 138, 115),
     "Nougat": (208, 145, 104),
     "Medium Nougat": (170, 125, 85),
     "Dark Nougat": (173, 97, 64),
-    "Fabuland Brown": (179, 105, 78),
-    "Sienna Brown": (145, 92, 60),
-    "Light Brown": (124, 80, 58),
-    "Medium Brown": (117, 89, 69),
     "Dark Orange": (169, 85, 0),
-    "Rust": (179, 16, 4),
-    "Reddish Brown": (88, 42, 18),
-    "Brown": (88, 57, 39),
-    "Umber Brown": (84, 63, 51),
-    "Dark Brown": (53, 33, 0),
     "Reddish Brown": (88, 38, 22),
     "Brown": (88, 57, 39),
-    "Umber Brown": (84, 63, 51),
-    "Dark Brown": (48, 25, 16),  # Warm espresso brown instead of olive-yellow (53, 33, 0)
+    "Dark Brown": (48, 25, 16),
 
-    # --- Reds, Pinks, Corals & Magentas (18) ---
-    "Transparent Red": (92, 12, 14),       # Deepest burgundy-red step (ID 41)
-    "Dark Red": (114, 14, 15),             # Primary Dark Red (ID 154)
-    "Metallic Bright Red": (145, 22, 25),  # Mid-step between Dark Red and Red (ID 184)
-    "Red": (180, 0, 0),
-
-    # --- Reds, Pinks, Corals & Magentas (16) ---
+    # --- Reds, Pinks, Corals & Magentas (9) ---
     "Dark Red": (114, 14, 15),
     "Red": (180, 0, 0),
-    "Coral Red": (225, 37, 27),
     "Reddish Orange": (236, 70, 18),
-    "Salmon": (242, 112, 94),
-    "Light Salmon": (254, 186, 189),
     "Coral": (255, 105, 143),
     "Sand Red": (149, 121, 118),
-    "Light Pink": (254, 204, 207),
     "Pink": (252, 151, 172),
-    "Rose Pink": (238, 157, 195),
     "Bright Pink": (228, 173, 200),
-    "Medium Dark Pink": (247, 133, 177),
     "Dark Pink": (200, 112, 160),
     "Magenta": (146, 57, 120),
-    "Reddish Violet": (143, 31, 118),
 
-    # --- Oranges & Yellows (13) ---
-    "Earth Orange": (250, 156, 28),
-    "Fabuland Orange": (239, 145, 33),
+    # --- Oranges & Yellows (7) ---
     "Orange": (254, 138, 24),
     "Medium Orange": (255, 167, 11),
     "Bright Light Orange": (248, 187, 61),
-    "Light Orange": (249, 186, 97),
-    "Dark Yellow": (220, 165, 20),
     "Yellow": (250, 200, 10),
-    "Medium Yellow": (252, 216, 55),
     "Light Yellow": (251, 230, 150),
     "Bright Light Yellow": (255, 240, 58),
     "Vibrant Neon Yellow": (235, 255, 0),
-    "Lemon": (245, 242, 95),
 
-    # --- Greens & Limes (14) ---
+    # --- Greens & Limes (7) ---
     "Spring Yellowish Green": (223, 238, 165),
-    "Light Lime": (217, 228, 167),
-    "Medium Lime": (199, 210, 60),
     "Lime": (187, 233, 11),
-    "Electric Green": (120, 235, 45),
     "Olive Green": (155, 154, 90),
-    "Dark Olive Green": (88, 93, 58),
-    "Light Green": (194, 218, 184),
-    "Medium Green": (115, 220, 161),
     "Sand Green": (160, 188, 172),
     "Bright Green": (75, 159, 74),
     "Green": (35, 120, 65),
     "Dark Green": (24, 70, 50),
-    "Deep Green": (15, 48, 34),
 
-    # --- Blues, Teals, Aquas & Azures (16) ---
+    # --- Blues, Teals, Aquas & Azures (9) ---
     "Light Aqua": (173, 221, 213),
-    "Aqua": (179, 215, 209),
-    "Light Turquoise": (85, 165, 175),
     "Dark Turquoise (Teal)": (0, 143, 155),
     "Medium Azure": (54, 174, 191),
     "Dark Azure": (7, 139, 201),
     "Maersk Blue": (53, 146, 195),
-    "Sky Blue": (125, 191, 221),
-    "Light Blue": (180, 210, 227),
     "Bright Light Blue": (159, 195, 233),
-    "Pastel Blue": (90, 196, 232),
     "Medium Blue": (90, 147, 219),
     "Sand Blue": (96, 116, 161),
     "Blue": (0, 85, 191),
-    "Dark Royal Blue": (14, 62, 154),
     "Dark Blue": (10, 52, 99),
 
-    # --- Purples, Violets & Lavenders (11) ---
+    # --- Purples & Lavenders (4) ---
     "Lavender": (225, 213, 237),
-    "Light Lilac": (205, 194, 232),
-    "Light Violet": (201, 202, 226),
     "Medium Lavender": (172, 120, 186),
-    "Sand Purple": (132, 94, 132),
-    "Lilac": (107, 98, 155),
-    "Medium Violet": (104, 116, 202),
-    "Violet": (67, 84, 163),
     "Purple": (129, 0, 123),
     "Dark Purple": (63, 54, 145),
-    "Deep Purple": (42, 32, 98),
-
-    # --- Pearl & Metallic Solid Colors (8) ---
-    "Pearl Light Gray": (156, 163, 168),
-    "Metallic Silver": (165, 169, 180),
-    "Flat Silver": (137, 135, 136),
-    "Pearl Dark Gray": (87, 88, 87),
-    "Titanium Metallic": (62, 60, 57),
-    "Warm Gold": (204, 156, 43),
-    "Pearl Gold": (170, 127, 46),
-    "Copper": (174, 122, 89),
 }
 
 LEGO_GRAYSCALE = {k: LEGO_ALL_COLORS[k] for k in
                   ["White", "Very Light Bluish Gray", "Light Bluish Gray", "Dark Bluish Gray", "Black"]}
 
-# Average BrickLink price (USD) per 1x1 brick. Unlisted retired/rare colors default to $0.95.
+# Real BrickLink availability & pricing across 3004 (1x2), 3003 (2x2), and 3001 (2x4)
 BRICKLINK_1X1_PRICE = {
-    # Tier 1: Cheap mass-produced ($0.05 - $0.08)
+    # Tier 1: Massive supply across 1x2, 2x2, and 2x4 ($0.05 - $0.08)
     "Black": 0.05, "White": 0.05, "Light Bluish Gray": 0.05, "Dark Bluish Gray": 0.05,
     "Red": 0.05, "Blue": 0.05, "Yellow": 0.05, "Tan": 0.05, "Reddish Brown": 0.05,
     "Dark Tan": 0.06, "Orange": 0.06, "Lime": 0.06, "Green": 0.06, "Dark Red": 0.07,
-    "Dark Blue": 0.07, "Dark Green": 0.07, "Dark Brown": 0.07, "Bright Light Orange": 0.07,
-    "Light Nougat": 0.07, "Medium Azure": 0.07, "Bright Green": 0.07,
-    # Tier 2: Active specialty ($0.09 - $0.18)
-    "Dark Orange": 0.09, "Medium Nougat": 0.09, "Olive Green": 0.09, "Sand Green": 0.10,
-    "Sand Blue": 0.11, "Medium Blue": 0.10, "Dark Azure": 0.09, "Dark Turquoise (Teal)": 0.09,
-    "Bright Light Yellow": 0.10, "Bright Light Blue": 0.11, "Light Aqua": 0.10, "Coral": 0.10,
-    "Bright Pink": 0.09, "Dark Pink": 0.10, "Magenta": 0.10, "Lavender": 0.10,
-    "Medium Lavender": 0.10, "Dark Purple": 0.11, "Spring Yellowish Green": 0.10,
-    "Pearl Gold": 0.09, "Flat Silver": 0.10, "Sienna Brown": 0.14, "Umber Brown": 0.14,
-    "Warm Tan": 0.14, "Reddish Orange": 0.14, "Vibrant Neon Yellow": 0.12,
-    "Transparent Red": 0.08,
-    # Tier 3: Semi-retired / Pricier ($0.25 - $0.65)
-    "Nougat": 0.25, "Dark Nougat": 0.30, "Rust": 0.45, "Earth Orange": 0.40,
-    "Medium Orange": 0.30, "Very Light Bluish Gray": 0.28, "Light Gray": 0.35,
-    "Dark Gray": 0.40, "Brown": 0.40, "Sand Red": 0.65, "Metallic Silver": 0.30,
-    "Pearl Light Gray": 0.25, "Pearl Dark Gray": 0.35, "Warm Gold": 0.45, "Copper": 0.55,
-    "Reddish Violet": 0.35, "Purple": 0.45, "Violet": 0.40, "Medium Violet": 0.45,
+    "Dark Blue": 0.07, "Dark Green": 0.07, "Dark Brown": 0.08, "Bright Light Orange": 0.07,
+    "Medium Nougat": 0.07, "Medium Azure": 0.07, "Bright Pink": 0.07, "Dark Purple": 0.08,
+
+    # Tier 2: Good supply across all 3 bricks ($0.09 - $0.18)
+    "Dark Azure": 0.09, "Dark Turquoise (Teal)": 0.09, "Medium Blue": 0.09, "Medium Lavender": 0.10,
+    "Sand Green": 0.10, "Light Aqua": 0.10, "Sand Blue": 0.11, "Bright Light Yellow": 0.10,
+    "Lavender": 0.11, "Dark Orange": 0.11, "Coral": 0.11, "Dark Pink": 0.11,
+    "Bright Light Blue": 0.12, "Vibrant Neon Yellow": 0.12, "Spring Yellowish Green": 0.14,
+    "Olive Green": 0.15, "Light Gray": 0.18, "Dark Gray": 0.18, "Brown": 0.18,
+
+    # Tier 3: Lower 2x4 (3001) or 2x2 (3003) supply — blocked when Price Slider >= 60 ($0.28 - $0.85)
+    "Purple": 0.28, "Light Yellow": 0.28, "Pink": 0.32, "Light Nougat": 0.32,
+    "Bright Green": 0.35, "Magenta": 0.35, "Medium Orange": 0.38, "Maersk Blue": 0.55,
+    "Sand Red": 0.65, "Nougat": 0.65, "Reddish Orange": 0.65,
+    "Very Light Bluish Gray": 0.75, "Dark Nougat": 0.85,
 }
 
 # Longer interlocking bricks cost much less per stud than four 1x1 bricks on BrickLink
