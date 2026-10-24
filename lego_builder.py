@@ -491,8 +491,9 @@ class Mosaic:
         
 def pack_interlocking_wall(idx_grid, names, depth=2):
     """
-    Pack a (ny, nx) color grid into interlocking bricks using ONLY widths (1, 2, 4) — no 1x3/2x3 bricks.
-    Uses dynamic programming per row to stagger vertical seams against the row below.
+    Pack a (ny, nx) color grid into interlocking bricks using ONLY widths (1, 2, 4).
+    Heavily prioritizes 4-wide (2x4) bricks whenever 4 matching studs exist, using a single
+    2-wide brick at the edge of alternating rows so the 2x4s lock together in a running bond.
     """
     allowed_widths = (1, 2, 4)
     ny, nx = idx_grid.shape
@@ -515,28 +516,25 @@ def pack_interlocking_wall(idx_grid, names, depth=2):
             color = row[x]
             for w in allowed_widths:
                 nx_pos = x + w
-                # Check that ALL studs in this brick width match the exact same color
                 if nx_pos > nx or not np.all(row[x:nx_pos] == color):
                     break
 
-                # Reward 4-wide and 2-wide bricks over 1x1s
-                score = {1: 0.0, 2: 2.4, 4: 5.2}[w]
+                # Strongly prioritize 4-wide bricks (16.0) over two 2-wide bricks (2 * 5.0 = 10.0)
+                score = {1: 1.0, 2: 5.0, 4: 16.0}[w]
 
-                # Penalize vertical seams that line up with the row below
-                if nx_pos < nx:
-                    if nx_pos in prev_seams:
-                        score -= 4.5
-                    else:
-                        score += 1.2
+                # Penalize vertical seams that line up directly with a seam on the row below
+                if nx_pos < nx and nx_pos in prev_seams:
+                    score -= 5.0
 
-                # Bonus for bridging across seams from the row below
+                # Bonus for bridging across seams from the row below (locks the wall together)
                 for internal_x in range(x + 1, nx_pos):
                     if internal_x in prev_seams:
                         score += 2.5
 
-                # On odd rows, prefer starting with a 2-wide brick so 4-wide bricks stagger in a running bond
-                if x == 0 and (y % 2 == 1) and w == 2:
-                    score += 1.8
+                # On odd rows, slight nudge to start a color run with one 2x2 so all following 2x4s stagger
+                is_run_start = (x == 0) or (row[x - 1] != color)
+                if is_run_start and (y % 2 == 1) and w == 2 and (x + 6 <= nx) and np.all(row[x:x + 6] == color):
+                    score += 1.5
 
                 if dp[x][0] + score > dp[nx_pos][0]:
                     dp[nx_pos] = (dp[x][0] + score, x)
@@ -639,9 +637,13 @@ def build_mosaic(file_bytes, p, palette_items):
         used_penalty = np.zeros(len(pal_rgb), dtype=np.float64)
 
         for c_i in order:
-            best_lego = int((d_mat[c_i] + used_penalty).argmin())
+            # Don't force duplicate background clusters (like pure White or Black) onto different grays
+            if d_mat[c_i].min() < 0.0025:
+                best_lego = int(d_mat[c_i].argmin())
+            else:
+                best_lego = int((d_mat[c_i] + used_penalty).argmin())
+                used_penalty[best_lego] += 0.008
             cluster_to_lego[c_i] = best_lego
-            used_penalty[best_lego] += 0.008
 
         idx = cluster_to_lego[cluster_idx]
     else:
